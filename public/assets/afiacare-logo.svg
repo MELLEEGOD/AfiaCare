@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">AfiaCare logo</title>
+  <desc id="desc">Abstract A mark with a care arc, pulse line, and heart accent.</desc>
+  <rect width="64" height="64" rx="14" fill="#17264A"/>
+  <path
+    d="M14 49 28.3 17.8c1.5-3.3 6-3.3 7.5 0L50 49h-8.8l-3-7H25.9l-3.1 7H14Z"
+    fill="#FFFFFF"
+  />
+  <path
+    d="M18.8 40.3C17 36.9 16 33 16 29c0-10.5 7.2-19.2 16-21.5C40.8 9.8 48 18.5 48 29c0 4-1 7.9-2.8 11.3"
+    fill="none"
+    stroke="#7CC4F5"
+    stroke-width="5"
+    stroke-linecap="round"
+  />
+  <path
+    d="M22 34h8.3l2.6-6.2 5 13.4 3.1-7.2h5"
+    fill="none"
+    stroke="#7CC4F5"
+    stroke-width="3.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M32 52.1 25.7 46c-2.5-2.4-2.7-6.1-.6-8.3 1.9-2 5.1-1.9 6.9.2 1.8-2.1 5-2.2 6.9-.2 2.1 2.2 1.9 5.9-.6 8.3L32 52.1Z"
+    fill="#F3C94D"
+  />
+</svg>

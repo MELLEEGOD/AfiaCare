@@ -1,0 +1,273 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // publicProfiles/{uid}: displayName string(1..50), city string(1..50), createdAt timestamp.
+    // privateProfiles/{uid}: ageGroup adult|under18, guardianConfirmed bool, createdAt timestamp.
+    // posts/{id}: author identity, category/title/body, status active|hidden, createdAt timestamp.
+    // posts/{id}/comments/{id}: author identity, body, createdAt timestamp.
+    // posts/{id}/reactions/{uid}: uid, createdAt timestamp.
+    // challenges/{id}: creator identity, title/summary/goal, status, endsAt/createdAt timestamps.
+    // challenges/{id}/members/{uid}: uid, joinedAt timestamp.
+    // meetups/{id}: creator identity, public venue metadata, capacity, guardianRequired, status,
+    //   startsAt/createdAt timestamps. Exact location is intentionally excluded.
+    // meetups/{id}/private/location: exactLocation string(1..180), creatorUid.
+    // meetups/{id}/attendees/{uid}: uid, joinedAt timestamp.
+    // reports/{id}: reporter/target/reason/status and createdAt timestamp.
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function isModerator() {
+      return isAuthenticated() &&
+        request.auth.token.email == 'adhvikeze@gmail.com' &&
+        request.auth.token.email_verified == true;
+    }
+
+    function isRecent(value) {
+      return value is timestamp && value > request.time - duration.value(5, 'm') && value <= request.time;
+    }
+
+    function meetupParticipationAllowed() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/privateProfiles/$(request.auth.uid)) &&
+        (get(/databases/$(database)/documents/privateProfiles/$(request.auth.uid)).data.ageGroup == 'adult' ||
+         get(/databases/$(database)/documents/privateProfiles/$(request.auth.uid)).data.guardianConfirmed == true);
+    }
+
+    function validIdentity(data) {
+      return data.authorUid is string && data.authorUid.size() >= 20 && data.authorUid.size() <= 128 &&
+        data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 50 &&
+        data.authorCity is string && data.authorCity.size() >= 1 && data.authorCity.size() <= 50 &&
+        exists(/databases/$(database)/documents/publicProfiles/$(data.authorUid)) &&
+        get(/databases/$(database)/documents/publicProfiles/$(data.authorUid)).data.displayName == data.authorName &&
+        get(/databases/$(database)/documents/publicProfiles/$(data.authorUid)).data.city == data.authorCity;
+    }
+
+    function validCreatorIdentity(data) {
+      return data.creatorUid is string && data.creatorUid.size() >= 20 && data.creatorUid.size() <= 128 &&
+        data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 50 &&
+        data.authorCity is string && data.authorCity.size() >= 1 && data.authorCity.size() <= 50 &&
+        exists(/databases/$(database)/documents/publicProfiles/$(data.creatorUid)) &&
+        get(/databases/$(database)/documents/publicProfiles/$(data.creatorUid)).data.displayName == data.authorName &&
+        get(/databases/$(database)/documents/publicProfiles/$(data.creatorUid)).data.city == data.authorCity;
+    }
+
+    function validPublicProfile(data) {
+      return data.keys().hasAll(['displayName', 'city', 'createdAt']) &&
+        data.keys().hasOnly(['displayName', 'city', 'createdAt']) &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 50 &&
+        data.city is string && data.city.size() >= 1 && data.city.size() <= 50 &&
+        data.createdAt is timestamp;
+    }
+
+    function validPrivateProfile(data) {
+      return data.keys().hasAll(['ageGroup', 'guardianConfirmed', 'createdAt']) &&
+        data.keys().hasOnly(['ageGroup', 'guardianConfirmed', 'createdAt']) &&
+        data.ageGroup is string && data.ageGroup in ['adult', 'under18'] &&
+        data.guardianConfirmed is bool &&
+        (data.ageGroup == 'adult' || data.guardianConfirmed == true) &&
+        data.createdAt is timestamp;
+    }
+
+    function validPost(data) {
+      return data.keys().hasAll(['authorUid', 'authorName', 'authorCity', 'category', 'title', 'body', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['authorUid', 'authorName', 'authorCity', 'category', 'title', 'body', 'status', 'createdAt']) &&
+        validIdentity(data) &&
+        data.category is string && data.category in ['General', 'Movement', 'Hydration', 'Food', 'Family'] &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+        data.body is string && data.body.size() >= 1 && data.body.size() <= 1400 &&
+        data.status is string && data.status in ['active', 'hidden'] &&
+        data.createdAt is timestamp;
+    }
+
+    function validComment(data) {
+      return data.keys().hasAll(['authorUid', 'authorName', 'authorCity', 'body', 'createdAt']) &&
+        data.keys().hasOnly(['authorUid', 'authorName', 'authorCity', 'body', 'createdAt']) &&
+        validIdentity(data) &&
+        data.body is string && data.body.size() >= 1 && data.body.size() <= 700 &&
+        data.createdAt is timestamp;
+    }
+
+    function validChallenge(data) {
+      return data.keys().hasAll(['creatorUid', 'authorName', 'authorCity', 'title', 'summary', 'goal', 'status', 'endsAt', 'createdAt']) &&
+        data.keys().hasOnly(['creatorUid', 'authorName', 'authorCity', 'title', 'summary', 'goal', 'status', 'endsAt', 'createdAt']) &&
+        validCreatorIdentity(data) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 100 &&
+        data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 500 &&
+        data.goal is string && data.goal.size() >= 1 && data.goal.size() <= 80 &&
+        data.status is string && data.status in ['active', 'hidden'] &&
+        data.endsAt is timestamp && data.endsAt > request.time &&
+        data.createdAt is timestamp;
+    }
+
+    function validMeetup(data) {
+      return data.keys().hasAll(['creatorUid', 'authorName', 'authorCity', 'title', 'summary', 'city', 'venue', 'capacity', 'attendeeCount', 'guardianRequired', 'status', 'startsAt', 'createdAt']) &&
+        data.keys().hasOnly(['creatorUid', 'authorName', 'authorCity', 'title', 'summary', 'city', 'venue', 'capacity', 'attendeeCount', 'guardianRequired', 'status', 'startsAt', 'createdAt']) &&
+        validCreatorIdentity(data) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 100 &&
+        data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 500 &&
+        data.city is string && data.city.size() >= 1 && data.city.size() <= 50 &&
+        data.venue is string && data.venue.size() >= 1 && data.venue.size() <= 100 &&
+        data.capacity is int && data.capacity >= 2 && data.capacity <= 100 &&
+        data.attendeeCount is int && data.attendeeCount >= 0 && data.attendeeCount <= data.capacity &&
+        data.guardianRequired is bool && data.guardianRequired == true &&
+        data.status is string && data.status in ['active', 'hidden'] &&
+        data.startsAt is timestamp && data.startsAt > request.time &&
+        data.createdAt is timestamp;
+    }
+
+    function validReport(data) {
+      return data.keys().hasAll(['reporterUid', 'targetType', 'targetId', 'reason', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['reporterUid', 'targetType', 'targetId', 'reason', 'status', 'createdAt']) &&
+        data.reporterUid is string && data.reporterUid.size() >= 20 && data.reporterUid.size() <= 128 &&
+        data.targetType is string && data.targetType in ['post', 'meetup'] &&
+        data.targetId is string && data.targetId.size() >= 1 && data.targetId.size() <= 128 &&
+        data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 300 &&
+        data.status is string && data.status in ['open', 'dismissed', 'resolved'] &&
+        data.createdAt is timestamp;
+    }
+
+    match /publicProfiles/{uid} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(uid) && validPublicProfile(request.resource.data) && isRecent(request.resource.data.createdAt);
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /privateProfiles/{uid} {
+      allow read: if isOwner(uid) || isModerator();
+      allow create: if isOwner(uid) && validPrivateProfile(request.resource.data) && isRecent(request.resource.data.createdAt);
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /posts/{postId} {
+      allow read: if isAuthenticated() && (resource.data.status == 'active' || isModerator());
+      allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid &&
+        request.resource.data.status == 'active' && validPost(request.resource.data) && isRecent(request.resource.data.createdAt);
+      allow update: if isModerator() && validPost(request.resource.data) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+        request.resource.data.authorUid == resource.data.authorUid && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isModerator() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
+
+      match /comments/{commentId} {
+        allow read: if isAuthenticated() && get(/databases/$(database)/documents/posts/$(postId)).data.status == 'active';
+        allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid &&
+          validComment(request.resource.data) && isRecent(request.resource.data.createdAt) &&
+          get(/databases/$(database)/documents/posts/$(postId)).data.status == 'active';
+        allow update: if false;
+        allow delete: if isModerator() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
+      }
+
+      match /reactions/{uid} {
+        allow read: if isAuthenticated() && get(/databases/$(database)/documents/posts/$(postId)).data.status == 'active';
+        allow create: if isOwner(uid) && request.resource.data.keys().hasAll(['uid', 'createdAt']) &&
+          request.resource.data.keys().hasOnly(['uid', 'createdAt']) && request.resource.data.uid == uid &&
+          isRecent(request.resource.data.createdAt) &&
+          get(/databases/$(database)/documents/posts/$(postId)).data.status == 'active';
+        allow update: if false;
+        allow delete: if isOwner(uid);
+      }
+    }
+
+    match /challenges/{challengeId} {
+      allow read: if isAuthenticated() && (resource.data.status == 'active' || isModerator());
+      allow create: if isAuthenticated() && request.resource.data.creatorUid == request.auth.uid &&
+        request.resource.data.status == 'active' && validChallenge(request.resource.data) && isRecent(request.resource.data.createdAt) &&
+        getAfter(/databases/$(database)/documents/challenges/$(challengeId)/members/$(request.auth.uid)) != null;
+      allow update: if isModerator() && validChallenge(request.resource.data) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+        request.resource.data.creatorUid == resource.data.creatorUid && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isModerator() || (isAuthenticated() && resource.data.creatorUid == request.auth.uid);
+
+      match /members/{uid} {
+        allow read: if isAuthenticated() && get(/databases/$(database)/documents/challenges/$(challengeId)).data.status == 'active';
+        allow create: if isOwner(uid) && request.resource.data.keys().hasAll(['uid', 'joinedAt']) &&
+          request.resource.data.keys().hasOnly(['uid', 'joinedAt']) && request.resource.data.uid == uid &&
+          isRecent(request.resource.data.joinedAt) &&
+          ((!exists(/databases/$(database)/documents/challenges/$(challengeId)) &&
+            getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.status == 'active') ||
+           (exists(/databases/$(database)/documents/challenges/$(challengeId)) &&
+            get(/databases/$(database)/documents/challenges/$(challengeId)).data.status == 'active'));
+        allow update: if false;
+        allow delete: if isOwner(uid);
+      }
+    }
+
+    match /meetups/{meetupId} {
+      allow read: if isAuthenticated() && (resource.data.status == 'active' || isModerator());
+      allow create: if isAuthenticated() && request.resource.data.creatorUid == request.auth.uid &&
+        request.resource.data.status == 'active' && request.resource.data.attendeeCount == 1 &&
+        validMeetup(request.resource.data) && isRecent(request.resource.data.createdAt) &&
+        getAfter(/databases/$(database)/documents/meetups/$(meetupId)/attendees/$(request.auth.uid)) != null;
+      allow update: if validMeetup(request.resource.data) &&
+        request.resource.data.creatorUid == resource.data.creatorUid && request.resource.data.createdAt == resource.data.createdAt &&
+        ((isModerator() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])) ||
+         (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendeeCount']) &&
+          (request.resource.data.attendeeCount == resource.data.attendeeCount + 1 || request.resource.data.attendeeCount == resource.data.attendeeCount - 1) &&
+          ((request.resource.data.attendeeCount > resource.data.attendeeCount &&
+            !exists(/databases/$(database)/documents/meetups/$(meetupId)/attendees/$(request.auth.uid)) &&
+            getAfter(/databases/$(database)/documents/meetups/$(meetupId)/attendees/$(request.auth.uid)) != null) ||
+           (request.resource.data.attendeeCount < resource.data.attendeeCount &&
+            exists(/databases/$(database)/documents/meetups/$(meetupId)/attendees/$(request.auth.uid)) &&
+            getAfter(/databases/$(database)/documents/meetups/$(meetupId)/attendees/$(request.auth.uid)) == null))));
+      allow delete: if isModerator() || (isAuthenticated() && resource.data.creatorUid == request.auth.uid);
+
+      match /private/location {
+        allow read: if isModerator() ||
+          (isAuthenticated() && get(/databases/$(database)/documents/meetups/$(meetupId)).data.status == 'active' &&
+           (get(/databases/$(database)/documents/meetups/$(meetupId)).data.creatorUid == request.auth.uid ||
+            exists(/databases/$(database)/documents/meetups/$(meetupId)/attendees/$(request.auth.uid))));
+        allow create: if isAuthenticated() &&
+          getAfter(/databases/$(database)/documents/meetups/$(meetupId)).data.creatorUid == request.auth.uid &&
+          request.resource.data.keys().hasAll(['creatorUid', 'exactLocation']) &&
+          request.resource.data.keys().hasOnly(['creatorUid', 'exactLocation']) &&
+          request.resource.data.creatorUid == request.auth.uid &&
+          request.resource.data.exactLocation is string && request.resource.data.exactLocation.size() >= 1 && request.resource.data.exactLocation.size() <= 180;
+        allow update, delete: if false;
+      }
+
+      match /attendees/{uid} {
+        allow read: if isAuthenticated() && get(/databases/$(database)/documents/meetups/$(meetupId)).data.status == 'active';
+        allow create: if isOwner(uid) && meetupParticipationAllowed() && request.resource.data.keys().hasAll(['uid', 'joinedAt']) &&
+          request.resource.data.keys().hasOnly(['uid', 'joinedAt']) && request.resource.data.uid == uid &&
+          isRecent(request.resource.data.joinedAt) &&
+          ((!exists(/databases/$(database)/documents/meetups/$(meetupId)) &&
+            getAfter(/databases/$(database)/documents/meetups/$(meetupId)).data.creatorUid == uid &&
+            getAfter(/databases/$(database)/documents/meetups/$(meetupId)).data.attendeeCount == 1) ||
+           (exists(/databases/$(database)/documents/meetups/$(meetupId)) &&
+            getAfter(/databases/$(database)/documents/meetups/$(meetupId)).data.attendeeCount ==
+              get(/databases/$(database)/documents/meetups/$(meetupId)).data.attendeeCount + 1));
+        allow update: if false;
+        allow delete: if isOwner(uid) &&
+          getAfter(/databases/$(database)/documents/meetups/$(meetupId)).data.attendeeCount ==
+            get(/databases/$(database)/documents/meetups/$(meetupId)).data.attendeeCount - 1;
+      }
+    }
+
+    match /reports/{reportId} {
+      allow read: if isModerator() || (isAuthenticated() && resource.data.reporterUid == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.reporterUid == request.auth.uid &&
+        request.resource.data.status == 'open' && validReport(request.resource.data) && isRecent(request.resource.data.createdAt) &&
+        ((request.resource.data.targetType == 'post' && exists(/databases/$(database)/documents/posts/$(request.resource.data.targetId))) ||
+         (request.resource.data.targetType == 'meetup' && exists(/databases/$(database)/documents/meetups/$(request.resource.data.targetId))));
+      allow update: if isModerator() && validReport(request.resource.data) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+        request.resource.data.reporterUid == resource.data.reporterUid && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

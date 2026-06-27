@@ -1,0 +1,2 @@
+export const WELLNESS_QUIZ_INTERVAL_MS = 3 * 60 * 60 * 1000;
+export const WELLNESS_QUIZ_VERSION = 6;
