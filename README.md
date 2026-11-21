@@ -109,7 +109,7 @@ The app uses browser `localStorage` for mood check-ins, SDG 3 habit progress, fa
 
 Community provides Firebase email/password accounts, public display names, realtime discussions, comments, reactions, shared challenges, meetup creation and RSVP, reports, and a moderator queue. Data persists in Standard Cloud Firestore (`me-central1`).
 
-- Verified Firebase account `adhvikeze@gmail.com` is the bootstrap moderator.
+- Verified Firebase account [configured bootstrap moderator account] is the bootstrap moderator.
 - Exact meetup locations are withheld until the signed-in member RSVPs.
 - Under-18 accounts must confirm parent or guardian approval.
 - Firestore rules and indexes live in `firestore.rules` and `firestore.indexes.json`.
